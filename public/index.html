@@ -4,147 +4,414 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Vantorium Şirket</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="/socket.io/socket.io.js"></script>
 <style>
   :root{
-    --bg:#0a0b0d; --panel:#131519; --panel2:#1a1d23;
-    --txt:#e8ecf1; --sub:#8a929e; --accent:#3b82f6;
-    --green:#22c55e; --red:#ef4444; --border:#22262e;
+    --bg:#0a0b0d; --surface:#111318; --surface-2:#171a21; --surface-3:#1e222b;
+    --border:#232833; --border-strong:#2e3542;
+    --txt:#e9edf3; --txt-dim:#9aa3b2; --txt-muted:#5f6878;
+    --accent:#3b82f6; --accent-hover:#2563eb;
+    --green:#22c55e; --red:#ef4444; --amber:#f59e0b;
   }
-  *{box-sizing:border-box;margin:0;padding:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif}
-  body{background:var(--bg);color:var(--txt);min-height:100vh;overflow-x:hidden}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    background:var(--bg); color:var(--txt); font-size:14px; line-height:1.5;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    letter-spacing:-.011em; overflow-x:hidden;
+  }
+  input,button{font-family:inherit}
 
-  /* MATRIX BG */
-  #matrix{position:fixed;inset:0;z-index:0;opacity:.25;pointer-events:none}
+  #authScreen{
+    position:fixed; inset:0; z-index:200; background:var(--bg);
+    display:flex; align-items:center; justify-content:center; padding:24px;
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(59,130,246,.08), transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(59,130,246,.05), transparent 40%);
+  }
+  .auth-box{
+    width:100%; max-width:400px; background:var(--surface);
+    border:1px solid var(--border); border-radius:16px;
+    padding:36px 32px 32px;
+    box-shadow:0 24px 64px rgba(0,0,0,.5);
+  }
+  .brand-top{display:flex; flex-direction:column; align-items:center; margin-bottom:28px}
+  .brand-top img{
+    width:56px; height:56px; object-fit:contain; margin-bottom:14px;
+    filter:drop-shadow(0 0 24px rgba(59,130,246,.4));
+  }
+  .brand-top h1{font-size:20px; font-weight:700; letter-spacing:-.02em}
+  .brand-top p{
+    font-size:12px; color:var(--txt-muted); margin-top:4px;
+    letter-spacing:.06em; text-transform:uppercase; font-weight:500;
+  }
+  .tabs{
+    display:flex; gap:4px; background:var(--surface-2);
+    border:1px solid var(--border); border-radius:10px; padding:4px; margin-bottom:22px;
+  }
+  .tabs button{
+    flex:1; padding:9px; background:transparent; border:none;
+    color:var(--txt-dim); font-size:13px; font-weight:600;
+    border-radius:7px; cursor:pointer; letter-spacing:-.01em; transition:all .15s;
+  }
+  .tabs button.active{background:var(--surface-3); color:var(--txt)}
+  .field{margin-bottom:14px}
+  .field label{
+    display:block; font-size:12px; font-weight:500;
+    color:var(--txt-dim); margin-bottom:6px;
+  }
+  .field input{
+    width:100%; padding:11px 13px; background:var(--surface-2);
+    border:1px solid var(--border); border-radius:8px;
+    color:var(--txt); font-size:14px; outline:none;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .field input:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+  .field input::placeholder{color:var(--txt-muted)}
+  .primary{
+    width:100%; padding:11px; background:var(--accent); color:#fff;
+    border:none; border-radius:8px; font-size:14px; font-weight:600;
+    cursor:pointer; transition:background .15s;
+  }
+  .primary:hover:not(:disabled){background:var(--accent-hover)}
+  .primary:disabled{opacity:.6; cursor:not-allowed}
+  .msg{
+    font-size:12px; margin-top:10px; padding:9px 11px;
+    border-radius:7px; font-weight:500; display:none;
+  }
+  .msg.show{display:block}
+  .msg.error{background:rgba(239,68,68,.1); color:#fca5a5; border:1px solid rgba(239,68,68,.25)}
+  .msg.info{background:rgba(59,130,246,.1); color:#93c5fd; border:1px solid rgba(59,130,246,.25)}
 
-  /* VERIFY SCREEN */
-  #verify{position:fixed;inset:0;z-index:100;background:rgba(10,11,13,.97);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px)}
-  .verify-box{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:min(92vw,420px);text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.6)}
-  .verify-box h1{font-size:22px;font-weight:700;letter-spacing:.5px;margin-bottom:6px}
-  .verify-box .sub{color:var(--sub);font-size:12px;margin-bottom:22px;letter-spacing:.3px}
-  .verify-box img{width:72px;height:72px;object-fit:contain;margin-bottom:16px;filter:drop-shadow(0 0 20px rgba(59,130,246,.4))}
-  .verify-box .hint{color:var(--sub);font-size:13px;margin-bottom:14px}
-  .verify-btn{width:100%;padding:14px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;color:var(--txt);font-size:14px;font-weight:500;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center;gap:10px}
-  .verify-btn:hover{border-color:var(--accent);background:#1e2430}
-  .verify-btn .box{width:18px;height:18px;border:2px solid var(--sub);border-radius:4px;transition:.2s}
-  .verify-btn.done{border-color:var(--green);background:rgba(34,197,94,.1)}
-  .verify-btn.done .box{background:var(--green);border-color:var(--green)}
+  #verifyScreen{
+    position:fixed; inset:0; z-index:190; background:var(--bg);
+    display:none; align-items:center; justify-content:center; padding:24px;
+  }
+  #verifyScreen.active{display:flex}
+  .verify-box{
+    width:100%; max-width:420px; background:var(--surface);
+    border:1px solid var(--border); border-radius:16px;
+    padding:36px 32px;
+    box-shadow:0 24px 64px rgba(0,0,0,.5); text-align:center;
+  }
+  .shield{
+    width:64px; height:64px; margin:0 auto 18px;
+    display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(135deg, rgba(59,130,246,.18), rgba(59,130,246,.06));
+    border:1px solid rgba(59,130,246,.3); border-radius:16px;
+  }
+  .verify-box h2{font-size:18px; font-weight:700; letter-spacing:-.02em; margin-bottom:6px}
+  .verify-box p.desc{font-size:13px; color:var(--txt-dim); margin-bottom:22px; line-height:1.55}
+  .code-input{display:flex; gap:8px; justify-content:center; margin-bottom:18px}
+  .code-input input{
+    width:44px; height:52px; text-align:center;
+    font-size:20px; font-weight:600;
+    background:var(--surface-2); border:1px solid var(--border);
+    border-radius:9px; color:var(--txt); outline:none;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .code-input input:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+  .resend-btn{
+    background:transparent; border:none; color:var(--accent);
+    font-size:12px; font-weight:500; cursor:pointer; margin-top:12px;
+    padding:6px 12px; border-radius:6px;
+  }
+  .resend-btn:hover{background:rgba(59,130,246,.1)}
+  .resend-btn:disabled{color:var(--txt-muted); cursor:not-allowed}
 
-  /* MAIN */
-  #app{display:none;position:relative;z-index:2;min-height:100vh}
-  header{background:rgba(19,21,25,.95);border-bottom:1px solid var(--border);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:20;backdrop-filter:blur(10px)}
-  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;letter-spacing:.4px}
-  .brand img{width:26px;height:26px;object-fit:contain}
-  .top-notif{position:fixed;top:64px;left:50%;transform:translateX(-50%) translateY(-20px);padding:12px 22px;border-radius:10px;font-size:13px;font-weight:500;opacity:0;transition:.3s;z-index:50;pointer-events:none;white-space:nowrap}
-  .top-notif.show{opacity:1;transform:translateX(-50%) translateY(0)}
-  .top-notif.green{background:rgba(34,197,94,.15);border:1px solid var(--green);color:var(--green)}
-  .top-notif.red{background:rgba(239,68,68,.15);border:1px solid var(--red);color:var(--red)}
+  .top-notif{
+    position:fixed; top:20px; left:50%;
+    transform:translateX(-50%) translateY(-30px);
+    padding:11px 20px; border-radius:9px;
+    font-size:13px; font-weight:500; opacity:0;
+    transition:all .25s ease; z-index:300; pointer-events:none;
+    max-width:calc(100vw - 40px);
+    box-shadow:0 10px 30px rgba(0,0,0,.4);
+  }
+  .top-notif.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  .top-notif.green{background:rgba(34,197,94,.15); border:1px solid rgba(34,197,94,.4); color:#86efac}
+  .top-notif.red{background:rgba(239,68,68,.15); border:1px solid rgba(239,68,68,.4); color:#fca5a5}
 
-  main{max-width:1100px;margin:0 auto;padding:24px 18px}
-  h2{font-size:18px;font-weight:600;margin-bottom:16px;letter-spacing:.3px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;transition:.2s;cursor:pointer;position:relative}
-  .card:hover{border-color:var(--accent);transform:translateY(-2px)}
-  .card h3{font-size:15px;font-weight:600;margin-bottom:6px}
-  .card .meta{color:var(--sub);font-size:12px;margin-bottom:14px}
-  .card .btn{width:100%;padding:10px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:.2s}
-  .btn-attack{background:rgba(239,68,68,.15);color:var(--red);border:1px solid var(--red)}
-  .btn-attack:hover{background:var(--red);color:#fff}
-  .btn-join{background:rgba(59,130,246,.15);color:var(--accent);border:1px solid var(--accent)}
-  .btn-join:hover{background:var(--accent);color:#fff}
+  #app{display:none; min-height:100vh}
+  #app.active{display:block}
+  .header{
+    position:sticky; top:0; z-index:30;
+    background:rgba(17,19,24,.85);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--border);
+    padding:14px 24px; display:flex; align-items:center; justify-content:space-between;
+  }
+  .brand-line{display:flex; align-items:center; gap:10px; font-weight:700; font-size:15px; letter-spacing:-.015em}
+  .brand-line img{width:26px; height:26px; object-fit:contain}
+  .user-chip{display:flex; align-items:center; gap:10px; font-size:13px; color:var(--txt-dim)}
+  .avatar{
+    width:30px; height:30px; border-radius:50%;
+    background:linear-gradient(135deg, var(--accent), #6366f1);
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:600; color:#fff;
+  }
+  .logout-btn{
+    background:transparent; border:1px solid var(--border);
+    color:var(--txt-dim); padding:6px 12px; border-radius:7px;
+    font-size:12px; font-weight:500; cursor:pointer;
+  }
+  .logout-btn:hover{border-color:var(--border-strong); color:var(--txt)}
 
-  /* TOP BAR (company) */
-  .company-top{position:fixed;top:0;left:0;right:0;background:rgba(19,21,25,.98);border-bottom:1px solid var(--border);padding:12px 22px;display:none;align-items:center;justify-content:space-between;z-index:30}
+  main{max-width:1120px; margin:0 auto; padding:28px 20px}
+  .page-title{font-size:20px; font-weight:700; letter-spacing:-.025em; margin-bottom:4px}
+  .page-sub{font-size:13px; color:var(--txt-muted); margin-bottom:20px}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(290px, 1fr)); gap:14px}
+  .card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; padding:18px;
+    transition:border-color .15s; position:relative; cursor:pointer;
+  }
+  .card:hover{border-color:var(--border-strong)}
+  .card h3{font-size:15px; font-weight:600; letter-spacing:-.015em; margin-bottom:6px}
+  .card .meta{font-size:12px; color:var(--txt-dim); margin-bottom:14px}
+  .card .actions{display:flex; flex-direction:column; gap:8px}
+  .btn{
+    width:100%; padding:9px 12px; border-radius:8px; border:1px solid;
+    font-size:13px; font-weight:600; cursor:pointer; transition:all .15s;
+  }
+  .btn-attack{background:rgba(239,68,68,.1); border-color:rgba(239,68,68,.35); color:#fca5a5}
+  .btn-attack:hover{background:var(--red); color:#fff; border-color:var(--red)}
+  .btn-join{background:rgba(59,130,246,.1); border-color:rgba(59,130,246,.35); color:#93c5fd}
+  .btn-join:hover{background:var(--accent); color:#fff; border-color:var(--accent)}
+  .badge{
+    display:inline-block; padding:3px 8px; border-radius:6px;
+    font-size:11px; font-weight:600;
+    background:var(--surface-3); color:var(--txt-dim);
+  }
+  .badge.owner{background:rgba(59,130,246,.15); color:#93c5fd}
+  .badge.member{background:rgba(34,197,94,.15); color:#86efac}
+  .empty{
+    grid-column:1/-1; text-align:center; padding:48px 20px;
+    background:var(--surface); border:1px dashed var(--border);
+    border-radius:12px; color:var(--txt-muted); font-size:13px;
+  }
+
+  .dots-btn{
+    position:absolute; top:14px; right:14px;
+    width:28px; height:28px; border-radius:7px;
+    background:var(--surface-2); border:1px solid var(--border);
+    color:var(--txt-dim); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    font-size:16px; line-height:1;
+  }
+  .dots-btn:hover{border-color:var(--accent); color:var(--txt)}
+  .dots-menu{
+    position:absolute; top:48px; right:14px; min-width:220px;
+    padding:6px; background:var(--surface-2);
+    border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 16px 40px rgba(0,0,0,.5);
+    z-index:20; display:none;
+  }
+  .dots-menu.show{display:block}
+  .dots-menu .label{
+    font-size:11px; font-weight:600; text-transform:uppercase;
+    color:var(--txt-muted); padding:8px 10px 4px; letter-spacing:.06em;
+  }
+  .dots-menu .row{display:flex; gap:6px; padding:5px}
+  .dots-menu .row button{
+    flex:1; padding:7px; font-size:12px; font-weight:600;
+    border-radius:6px; cursor:pointer; border:1px solid;
+  }
+  .dots-menu .row .accept{background:rgba(34,197,94,.12); border-color:rgba(34,197,94,.35); color:#86efac}
+  .dots-menu .row .accept:hover{background:var(--green); color:#fff}
+  .dots-menu .row .reject{background:rgba(239,68,68,.12); border-color:rgba(239,68,68,.35); color:#fca5a5}
+  .dots-menu .row .reject:hover{background:var(--red); color:#fff}
+  .dots-menu .empty-row{font-size:12px; color:var(--txt-muted); padding:8px 10px}
+
+  .company-top{
+    position:fixed; top:0; left:0; right:0; z-index:35;
+    background:rgba(17,19,24,.92);
+    backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--border);
+    padding:12px 22px;
+    display:none; align-items:center; justify-content:space-between;
+  }
   .company-top.show{display:flex}
+  .back-btn{
+    background:transparent; border:1px solid var(--border);
+    color:var(--txt-dim); padding:7px 14px; border-radius:8px;
+    font-size:12px; font-weight:500; cursor:pointer;
+  }
+  .back-btn:hover{border-color:var(--border-strong); color:var(--txt)}
 
-  /* 3 dots menu */
-  .dots{position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:6px;background:var(--panel2);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5}
-  .dots:hover{border-color:var(--accent)}
-  .dots-menu{position:absolute;top:46px;right:12px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px;display:none;flex-direction:column;gap:4px;min-width:170px;z-index:6}
-  .dots-menu.show{display:flex}
-  .dots-menu button{background:transparent;border:none;color:var(--txt);padding:8px 10px;text-align:left;font-size:12px;border-radius:5px;cursor:pointer;display:flex;align-items:center;gap:8px}
-  .dots-menu button:hover{background:var(--panel)}
-  .dots-menu .accept{color:var(--green)}
-  .dots-menu .reject{color:var(--red)}
+  .stats{display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px; margin-bottom:20px}
+  .stat{background:var(--surface); border:1px solid var(--border); border-radius:11px; padding:16px}
+  .stat .k{font-size:11px; font-weight:600; text-transform:uppercase; color:var(--txt-muted); letter-spacing:.06em}
+  .stat .v{font-size:22px; font-weight:700; letter-spacing:-.025em; margin-top:4px}
 
-  /* ATTACK ANIMATION OVERLAY */
-  #attack{position:fixed;inset:0;z-index:80;background:rgba(5,5,8,.96);display:none;overflow:hidden;font-family:monospace}
-  #attack.show{display:block}
-  #attack .matrix2{position:absolute;inset:0;overflow:hidden;opacity:.6}
-  #attack .matrix2 span{position:absolute;color:#0f0;font-size:14px;animation:fall linear infinite;text-shadow:0 0 6px #0f0}
-  @keyframes fall{from{transform:translateY(-100%)}to{transform:translateY(100vh)}}
-  #attack .menu{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;z-index:10}
-  #attack .menu h1{font-size:28px;letter-spacing:4px;color:#0f0;text-shadow:0 0 20px #0f0;margin-bottom:24px;animation:pulse 1s infinite}
-  @keyframes pulse{50%{opacity:.5}}
-  #attack .menu button{padding:16px 44px;background:transparent;border:2px solid #0f0;color:#0f0;font-size:18px;letter-spacing:4px;font-weight:700;cursor:pointer;border-radius:6px;transition:.2s;text-shadow:0 0 10px #0f0;box-shadow:0 0 20px rgba(0,255,0,.3)}
-  #attack .menu button:hover{background:#0f0;color:#000}
-  #attack .result{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;z-index:15;display:none}
-  #attack .result.show{display:block}
-  #attack .result h2{font-size:36px;letter-spacing:2px;font-weight:800;margin-bottom:14px}
-  #attack .result.green h2{color:var(--green);text-shadow:0 0 30px var(--green)}
-  #attack .result.red h2{color:var(--red);text-shadow:0 0 30px var(--red)}
-  #attack .result p{color:var(--sub);font-size:14px;margin-bottom:20px}
-  #attack .result button{padding:10px 30px;background:transparent;border:1px solid var(--sub);color:var(--txt);border-radius:6px;cursor:pointer;font-size:13px}
-
-  /* Chat */
-  .chat-panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;margin-top:18px;overflow:hidden}
-  .chat-panel h3{padding:14px 16px;border-bottom:1px solid var(--border);font-size:14px;font-weight:600}
-  .chat-msgs{height:280px;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
-  .chat-msgs .msg{font-size:13px;line-height:1.4}
-  .chat-msgs .msg b{color:var(--accent);margin-right:6px}
-  .chat-input{display:flex;border-top:1px solid var(--border)}
-  .chat-input input{flex:1;padding:12px 16px;background:transparent;border:none;color:var(--txt);font-size:13px;outline:none}
-  .chat-input button{padding:0 20px;background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer}
+  .chat-panel{background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden}
+  .chat-panel .head{padding:14px 18px; border-bottom:1px solid var(--border); font-size:13px; font-weight:600}
+  .chat-msgs{
+    height:320px; overflow-y:auto; padding:16px 18px;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .chat-msgs .msg-line{font-size:13px; line-height:1.5}
+  .chat-msgs .msg-line b{color:var(--accent); font-weight:600; margin-right:6px}
+  .chat-input{display:flex; border-top:1px solid var(--border); background:var(--surface-2)}
+  .chat-input input{
+    flex:1; padding:13px 18px; background:transparent; border:none;
+    outline:none; color:var(--txt); font-size:13px;
+  }
+  .chat-input input::placeholder{color:var(--txt-muted)}
+  .chat-input button{
+    padding:0 22px; background:var(--accent); border:none; color:#fff;
+    font-size:13px; font-weight:600; cursor:pointer;
+  }
+  .chat-input button:hover{background:var(--accent-hover)}
 
   .hidden{display:none!important}
+
+  #attackOverlay{
+    position:fixed; inset:0; z-index:250; background:rgba(5,6,8,.97);
+    display:none; overflow:hidden;
+    font-family:ui-monospace,'SF Mono',Menlo,monospace;
+  }
+  #attackOverlay.show{display:block}
+  #attackMatrix{position:absolute; inset:0; overflow:hidden; opacity:.55}
+  #attackMatrix span{
+    position:absolute; color:#22c55e; font-size:13px;
+    white-space:nowrap; font-weight:500;
+    animation:fall linear infinite;
+    text-shadow:0 0 6px currentColor;
+  }
+  @keyframes fall{from{transform:translateY(-120%)} to{transform:translateY(110vh)}}
+  .attack-center{
+    position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%); text-align:center; z-index:10;
+  }
+  .attack-center h1{
+    font-size:26px; letter-spacing:.3em; color:#22c55e;
+    text-shadow:0 0 24px rgba(34,197,94,.6); margin-bottom:22px; font-weight:700;
+  }
+  .attack-btn{
+    padding:14px 42px; background:transparent; border:2px solid #22c55e;
+    color:#22c55e; font-size:16px; letter-spacing:.3em; font-weight:700;
+    cursor:pointer; border-radius:8px;
+    text-shadow:0 0 12px rgba(34,197,94,.6);
+    box-shadow:0 0 24px rgba(34,197,94,.3);
+    transition:.2s;
+  }
+  .attack-btn:hover{background:#22c55e; color:#000; text-shadow:none}
+  .attack-result{
+    position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%); z-index:15; text-align:center;
+    display:none; background:rgba(17,19,24,.95);
+    border:1px solid var(--border); padding:32px 40px; border-radius:14px;
+    box-shadow:0 24px 64px rgba(0,0,0,.6); font-family:'Inter',sans-serif;
+  }
+  .attack-result.show{display:block}
+  .attack-result h2{font-size:28px; font-weight:800; margin-bottom:8px; letter-spacing:-.02em}
+  .attack-result.green h2{color:var(--green)}
+  .attack-result.red h2{color:var(--red)}
+  .attack-result p{font-size:13px; color:var(--txt-dim); margin-bottom:18px}
+  .attack-result button{
+    padding:9px 24px; background:var(--surface-2);
+    border:1px solid var(--border); color:var(--txt);
+    border-radius:8px; font-size:13px; font-weight:600; cursor:pointer;
+  }
+  .attack-result button:hover{border-color:var(--accent)}
 </style>
 </head>
 <body>
 
-<!-- MATRIX BG -->
-<canvas id="matrix"></canvas>
+<!-- AUTH SCREEN -->
+<div id="authScreen">
+  <div class="auth-box">
+    <div class="brand-top">
+      <img src="/icon.png" alt="" onerror="this.style.display='none'">
+      <h1>Vantorium Şirket</h1>
+      <p>Güvenli Platform</p>
+    </div>
 
-<!-- VERIFY SCREEN -->
-<div id="verify">
-  <div class="verify-box">
-    <img src="/icon.png" alt="Vantorium" onerror="this.style.display='none'">
-    <h1>Vantorium Şirket</h1>
-    <div class="sub">GÜVENLİK DOĞRULAMASI</div>
-    <p class="hint">Bot olmadığını doğrulamak için aşağıdaki kutucuğa bas.</p>
-    <button class="verify-btn" id="verifyBtn">
-      <span class="box"></span>
-      <span>İnsan olduğumu doğrula</span>
-    </button>
+    <div class="tabs">
+      <button id="tabLogin" class="active" onclick="switchTab('login')">Giriş</button>
+      <button id="tabRegister" onclick="switchTab('register')">Kayıt</button>
+    </div>
+
+    <div id="paneLogin">
+      <div class="field"><label>E-posta</label><input id="loginEmail" type="email" placeholder="ornek@mail.com"></div>
+      <div class="field"><label>Şifre</label><input id="loginPass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <button class="primary" onclick="doLogin()">Giriş Yap</button>
+      <div id="loginMsg" class="msg"></div>
+    </div>
+
+    <div id="paneRegister" class="hidden">
+      <div class="field"><label>Ad Soyad</label><input id="regName" type="text" placeholder="Adın"></div>
+      <div class="field"><label>E-posta</label><input id="regEmail" type="email" placeholder="ornek@mail.com"></div>
+      <div class="field"><label>Şifre</label><input id="regPass" type="password" placeholder="En az 6 karakter" onkeydown="if(event.key==='Enter')doRegister()"></div>
+      <button class="primary" onclick="doRegister()">Kayıt Ol</button>
+      <div id="regMsg" class="msg"></div>
+    </div>
   </div>
 </div>
 
-<!-- TOP NOTIF -->
+<!-- VERIFY SCREEN -->
+<div id="verifyScreen">
+  <div class="verify-box">
+    <div class="shield">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        <path d="M9 12l2 2 4-4"/>
+      </svg>
+    </div>
+    <h2>Hesap Doğrulama</h2>
+    <p class="desc">Platformu kullanabilmek için e-postana gönderilen 6 haneli kodu gir.</p>
+
+    <div class="code-input" id="codeInputs">
+      <input maxlength="1" inputmode="numeric">
+      <input maxlength="1" inputmode="numeric">
+      <input maxlength="1" inputmode="numeric">
+      <input maxlength="1" inputmode="numeric">
+      <input maxlength="1" inputmode="numeric">
+      <input maxlength="1" inputmode="numeric">
+    </div>
+    <button class="primary" onclick="doVerify()">Doğrula</button>
+    <button class="resend-btn" id="resendBtn" onclick="resendCode()">Kodu tekrar gönder</button>
+    <div id="verifyMsg" class="msg"></div>
+  </div>
+</div>
+
 <div class="top-notif" id="topNotif"></div>
 
-<!-- MAIN APP -->
+<!-- APP -->
 <div id="app">
-  <header>
-    <div class="brand"><img src="/icon.png" onerror="this.style.display='none'"> Vantorium</div>
-    <div style="font-size:12px;color:var(--sub)" id="meLabel">—</div>
-  </header>
-
-  <div class="company-top" id="companyTop">
-    <div class="brand"><img src="/icon.png" onerror="this.style.display='none'"> <span id="ctName">Şirket</span></div>
-    <button class="btn-join" style="width:auto;padding:8px 16px" onclick="backHome()">Geri</button>
+  <div class="header">
+    <div class="brand-line"><img src="/icon.png" onerror="this.style.display='none'"> Vantorium</div>
+    <div class="user-chip">
+      <div class="avatar" id="avatar">U</div>
+      <span id="meName">—</span>
+      <button class="logout-btn" onclick="doLogout()">Çıkış</button>
+    </div>
   </div>
 
-  <main id="home">
-    <h2>Şirketler</h2>
+  <div class="company-top" id="companyTop">
+    <div class="brand-line"><img src="/icon.png" onerror="this.style.display='none'"> <span id="ctName">Şirket</span></div>
+    <button class="back-btn" onclick="backHome()">← Geri</button>
+  </div>
+
+  <main id="homeView">
+    <div class="page-title">Şirketler</div>
+    <div class="page-sub">Şirketlere göz at, katıl veya sız.</div>
     <div class="grid" id="companyGrid"></div>
   </main>
 
   <main id="companyView" class="hidden">
     <div id="companyDetail"></div>
-    <div class="chat-panel">
-      <h3>Sohbet</h3>
+    <div class="chat-panel" style="margin-top:18px">
+      <div class="head">Sohbet</div>
       <div class="chat-msgs" id="chatMsgs"></div>
       <div class="chat-input">
-        <input id="chatInput" placeholder="Mesaj yaz..." maxlength="300">
+        <input id="chatInput" placeholder="Mesaj yaz..." maxlength="300" onkeydown="if(event.key==='Enter')sendChat()">
         <button onclick="sendChat()">Gönder</button>
       </div>
     </div>
@@ -152,13 +419,13 @@
 </div>
 
 <!-- ATTACK OVERLAY -->
-<div id="attack">
-  <div class="matrix2" id="attackMatrix"></div>
-  <div class="menu" id="attackMenu">
+<div id="attackOverlay">
+  <div id="attackMatrix"></div>
+  <div class="attack-center" id="attackMenu">
     <h1>ŞİRKET'E SIZ</h1>
-    <button onclick="runAttack()">DENE</button>
+    <button class="attack-btn" onclick="runAttack()">DENE</button>
   </div>
-  <div class="result" id="attackResult">
+  <div class="attack-result" id="attackResult">
     <h2 id="arTitle"></h2>
     <p id="arMsg"></p>
     <button onclick="closeAttack()">KAPAT</button>
@@ -166,282 +433,411 @@
 </div>
 
 <script>
-// ===== MATRIX BG =====
-const canvas = document.getElementById('matrix');
-const ctx = canvas.getContext('2d');
-let W = canvas.width = innerWidth, H = canvas.height = innerHeight;
-const chars = '01アイウエオカキクケコサシスセソVANTORIUMŞİRKET'.split('');
-const cols = Math.floor(W/16), drops = Array(cols).fill(1);
-function matrixLoop(){
-  ctx.fillStyle = 'rgba(10,11,13,.08)';
-  ctx.fillRect(0,0,W,H);
-  ctx.fillStyle = '#3b82f6';
-  ctx.font = '14px monospace';
-  drops.forEach((y,i)=>{
-    ctx.fillText(chars[Math.floor(Math.random()*chars.length)], i*16, y*16);
-    if(y*16 > H && Math.random() > .975) drops[i]=0;
-    drops[i]++;
-  });
-}
-setInterval(matrixLoop, 55);
-addEventListener('resize',()=>{W=canvas.width=innerWidth;H=canvas.height=innerHeight});
-
-// ===== STATE ======
 let ME = null;
 let CURRENT_COMPANY = null;
-const socket = io();
+let socket = null;
 
-// ===== VERIFY ======
-document.getElementById('verifyBtn').onclick = async () => {
-  const btn = document.getElementById('verifyBtn');
-  if (btn.classList.contains('done')) return;
-  btn.classList.add('done');
-  btn.querySelector('span:last-child').textContent = 'Doğrulandı ✓';
-  await new Promise(r=>setTimeout(r,700));
-  const name = 'Kullanıcı' + Math.floor(Math.random()*9999);
-  const r = await fetch('/api/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+// ===== AUTH =====
+function switchTab(t) {
+  document.getElementById('tabLogin').classList.toggle('active', t==='login');
+  document.getElementById('tabRegister').classList.toggle('active', t==='register');
+  document.getElementById('paneLogin').classList.toggle('hidden', t!=='login');
+  document.getElementById('paneRegister').classList.toggle('hidden', t!=='register');
+}
+
+function showMsg(id, type, text) {
+  const el = document.getElementById(id);
+  el.className = 'msg show ' + type;
+  el.textContent = text;
+}
+
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPass').value;
+  if (!email || !password) return showMsg('loginMsg', 'error', 'Tüm alanları doldur');
+  const btn = event?.target; if (btn) btn.disabled = true;
+  const r = await fetch('/api/login', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ email, password })
+  });
   const d = await r.json();
+  if (btn) btn.disabled = false;
+  if (!r.ok) return showMsg('loginMsg', 'error', d.error || 'Giriş başarısız');
   ME = d.user;
-  document.getElementById('meLabel').textContent = ME.name;
-  document.getElementById('verify').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
-  socket.emit('join-user', ME.id);
-  loadCompanies();
-};
+  if (!ME.verified) return showVerifyScreen();
+  await enterApp();
+}
 
-// ===== COMPANIES ======
-async function loadCompanies(){
+async function doRegister() {
+  const name = document.getElementById('regName').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPass').value;
+  if (!name || !email || !password) return showMsg('regMsg', 'error', 'Tüm alanları doldur');
+  const r = await fetch('/api/register', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ name, email, password })
+  });
+  const d = await r.json();
+  if (!r.ok) return showMsg('regMsg', 'error', d.error || 'Kayıt başarısız');
+  showMsg('regMsg', 'info', 'Doğrulama kodu e-postana gönderildi.');
+  ME = d.user;
+  setTimeout(showVerifyScreen, 800);
+}
+
+async function doLogout() {
+  await fetch('/api/logout', { method:'POST' });
+  location.reload();
+}
+
+// ===== VERIFY =====
+function showVerifyScreen() {
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('verifyScreen').classList.add('active');
+  setupCodeInputs();
+  startResendCooldown();
+}
+
+function setupCodeInputs() {
+  const inputs = document.querySelectorAll('#codeInputs input');
+  inputs.forEach((inp, i) => {
+    inp.value = '';
+    inp.oninput = () => {
+      inp.value = inp.value.replace(/\D/g, '');
+      if (inp.value && i < inputs.length-1) inputs[i+1].focus();
+    };
+    inp.onkeydown = e => {
+      if (e.key === 'Backspace' && !inp.value && i > 0) inputs[i-1].focus();
+    };
+  });
+  inputs[0]?.focus();
+}
+
+async function doVerify() {
+  const code = [...document.querySelectorAll('#codeInputs input')].map(i=>i.value).join('');
+  if (code.length !== 6) return showMsg('verifyMsg', 'error', '6 haneli kod gir');
+  const r = await fetch('/api/verify/confirm', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ code })
+  });
+  const d = await r.json();
+  if (!r.ok) return showMsg('verifyMsg', 'error', d.error || 'Doğrulama başarısız');
+  if (ME) ME.verified = true;
+  await enterApp();
+}
+
+let resendTimer = null;
+async function resendCode() {
+  const btn = document.getElementById('resendBtn');
+  btn.disabled = true;
+  const r = await fetch('/api/verify/send', { method:'POST' });
+  const d = await r.json();
+  if (!r.ok) {
+    showMsg('verifyMsg', 'error', d.error || 'Gönderilemedi');
+    btn.disabled = false;
+    return;
+  }
+  showMsg('verifyMsg', 'info', 'Yeni kod gönderildi.');
+  startResendCooldown();
+}
+
+function startResendCooldown() {
+  const btn = document.getElementById('resendBtn');
+  let sec = 30;
+  btn.disabled = true;
+  if (resendTimer) clearInterval(resendTimer);
+  btn.textContent = `Tekrar gönder (${sec}s)`;
+  resendTimer = setInterval(() => {
+    sec--;
+    if (sec <= 0) {
+      clearInterval(resendTimer);
+      btn.disabled = false;
+      btn.textContent = 'Kodu tekrar gönder';
+    } else {
+      btn.textContent = `Tekrar gönder (${sec}s)`;
+    }
+  }, 1000);
+}
+
+// ===== APP =====
+async function boot() {
+  const r = await fetch('/api/me');
+  if (!r.ok) return;
+  ME = await r.json();
+  if (!ME.verified) {
+    await fetch('/api/verify/send', { method:'POST' });
+    showVerifyScreen();
+  } else {
+    await enterApp();
+  }
+}
+
+async function enterApp() {
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('verifyScreen').classList.remove('active');
+  document.getElementById('app').classList.add('active');
+  document.getElementById('meName').textContent = ME.name;
+  document.getElementById('avatar').textContent = ME.name.charAt(0).toUpperCase();
+
+  socket = io();
+  socket.on('join-response', ({accepted}) => {
+    if (accepted) showNotif('green', "Tebrikler. Şirket'e katılma istediğiniz onaylandı!.");
+    else showNotif('red', "Üzgünüz. Şirket'e katılma istediğiniz reddedildi.");
+    loadCompanies();
+  });
+  socket.on('join-request', () => loadCompanies());
+  socket.on('chat-error', d => showNotif('red', d.msg));
+  socket.on('chat-message', m => {
+    if (!CURRENT_COMPANY) return;
+    const box = document.getElementById('chatMsgs');
+    const el = document.createElement('div');
+    el.className = 'msg-line';
+    el.innerHTML = `<b>${esc(m.name)}:</b>${esc(m.text)}`;
+    box.appendChild(el);
+    box.scrollTop = box.scrollHeight;
+  });
+  await loadCompanies();
+}
+
+async function loadCompanies() {
   const r = await fetch('/api/companies');
+  if (!r.ok) return;
   const list = await r.json();
   const grid = document.getElementById('companyGrid');
   grid.innerHTML = '';
-  if(!list.length){
-    grid.innerHTML = `<div style="color:var(--sub);font-size:13px">Henüz şirket yok. İlk şirketi oluştur!</div>
-      <button class="btn-join" style="padding:10px;border-radius:8px;width:100%" onclick="createCompany()">+ Şirket Oluştur</button>`;
+  if (!list.length) {
+    grid.innerHTML = `<div class="empty">
+      Henüz şirket yok.<br>
+      <button class="primary" style="width:auto;padding:10px 20px;margin-top:12px" onclick="createCompany()">+ Şirket Oluştur</button>
+    </div>`;
     return;
   }
-  list.forEach(c=>{
+  if (!list.some(c => c.owner === ME.id)) {
+    const createBtn = document.createElement('button');
+    createBtn.className = 'primary';
+    createBtn.style.cssText = 'width:auto;padding:10px 20px;margin-bottom:14px';
+    createBtn.textContent = '+ Şirket Oluştur';
+    createBtn.onclick = createCompany;
+    grid.parentElement.insertBefore(createBtn, grid);
+  }
+  list.forEach(c => {
     const isOwner = c.owner === ME.id;
     const isMember = c.members.includes(ME.id);
     const card = document.createElement('div');
     card.className = 'card';
-    let btns = '';
-    if(!isOwner && !isMember) btns += `<button class="btn btn-attack" onclick="openAttack('${c.id}')" style="margin-bottom:8px">ŞİRKET'E SIZ</button>`;
-    if(!isOwner && !isMember) btns += `<button class="btn btn-join" onclick="joinCompany('${c.id}')">ŞİRKET'E KATIL</button>`;
+
+    let badge = '';
+    if (isOwner) badge = '<span class="badge owner">Sahip</span>';
+    else if (isMember) badge = '<span class="badge member">Üye</span>';
+
+    let actions = '';
+    if (!isOwner && !isMember) {
+      actions = `
+        <button class="btn btn-attack" onclick="event.stopPropagation();openAttack('${c.id}')">ŞİRKET'E SIZ</button>
+        <button class="btn btn-join" onclick="event.stopPropagation();joinCompany('${c.id}')">ŞİRKET'E KATIL</button>`;
+    }
+
     card.innerHTML = `
-      <h3>${c.name}</h3>
-      <div class="meta">Üye: ${c.members.length} · Sahip: ${c.owner===ME.id?'Sen':'Başka'}</div>
-      ${btns || '<div style="color:var(--sub);font-size:12px">Üyesin</div>'}
-      ${isOwner ? `<div class="dots" onclick="toggleDots(event,'${c.id}')">⋮</div>
+      <h3>${esc(c.name)} ${badge}</h3>
+      <div class="meta">${c.members.length} üye · ${Object.values(c.shares).reduce((a,b)=>a+b,0)} hisse</div>
+      <div class="actions">${actions || '<div style="font-size:12px;color:var(--txt-muted);padding:6px 0">Üyesin</div>'}</div>
+      ${isOwner ? `<button class="dots-btn" onclick="event.stopPropagation();toggleDots(event,'${c.id}')">⋮</button>
         <div class="dots-menu" id="dots-${c.id}"></div>` : ''}
     `;
-    card.onclick = (e)=>{ if(e.target.closest('button')||e.target.closest('.dots')) return; openCompany(c.id); };
+    card.addEventListener('click', e => {
+      if (e.target.closest('button')) return;
+      openCompany(c.id);
+    });
     grid.appendChild(card);
   });
 }
 
-async function createCompany(){
+async function createCompany() {
   const name = prompt('Şirket adı:');
-  if(!name) return;
-  await fetch('/api/company/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:ME.id,name})});
-  loadCompanies();
-}
-
-// ===== ATTACK ======
-let attackCompany = null;
-function openAttack(id){
-  attackCompany = id;
-  const overlay = document.getElementById('attack');
-  overlay.classList.add('show');
-  document.getElementById('attackMenu').style.display = 'block';
-  document.getElementById('attackResult').className = 'result';
-  document.getElementById('attackMatrix').innerHTML = '';
-}
-function runAttack(){
-  document.getElementById('attackMenu').style.display = 'none';
-  const m = document.getElementById('attackMatrix');
-  m.innerHTML = '';
-  // 300 farklı yazı yağmuru
-  for(let i=0;i<300;i++){
-    const s = document.createElement('span');
-    s.textContent = Math.random().toString(2).slice(2,12) + ' ' + ['PASS','FAIL','TRY','EXEC','HACK','SIZ','ROOT','ADMIN','SHARE','TAPU'][Math.floor(Math.random()*10)];
-    s.style.left = Math.random()*100 + '%';
-    s.style.animationDuration = (Math.random()*2+1) + 's';
-    s.style.animationDelay = (Math.random()*1.5) + 's';
-    s.style.color = Math.random()>.85 ? '#ef4444' : (Math.random()>.5?'#0f0':'#22c55e');
-    m.appendChild(s);
-  }
-  // dit dit dit sesi
-  let dits = 0;
-  const dit = setInterval(()=>{
-    beep();
-    if(++dits > 12) clearInterval(dit);
-  }, 220);
-
-  setTimeout(async ()=>{
-    clearInterval(dit);
-    const r = await fetch('/api/attack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:ME.id,companyId:attackCompany})});
-    const d = await r.json();
-    const res = document.getElementById('attackResult');
-    const title = document.getElementById('arTitle');
-    const msg = document.getElementById('arMsg');
-    if(d.success){
-      res.className = 'result show green';
-      title.textContent = 'Pass Found!';
-      msg.textContent = 'The attack was successful. Hisseler ele geçirildi.';
-    }else{
-      res.className = 'result show red';
-      title.textContent = 'Pass not found';
-      msg.textContent = 'The attack failed.';
-    }
-    loadCompanies();
-  }, 1600);
-}
-function closeAttack(){
-  document.getElementById('attack').classList.remove('show');
-  loadCompanies();
-}
-// beep
-let ac;
-function beep(){
-  try{
-    ac = ac || new (window.AudioContext||window.webkitAudioContext)();
-    const o = ac.createOscillator(), g = ac.createGain();
-    o.connect(g); g.connect(ac.destination);
-    o.frequency.value = 880; o.type = 'square';
-    g.gain.setValueAtTime(.05, ac.currentTime);
-    g.gain.exponentialRampToValueAtTime(.0001, ac.currentTime+.08);
-    o.start(); o.stop(ac.currentTime+.09);
-  }catch(e){}
-}
-
-// ===== JOIN ======
-async function joinCompany(id){
-  const r = await fetch('/api/company/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:ME.id,companyId:id})});
+  if (!name) return;
+  const r = await fetch('/api/company/create', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ name })
+  });
   const d = await r.json();
-  showNotif(d.ok ? 'green' : 'red', d.ok ? 'İstek gönderildi. Sahibin onayı bekleniyor.' : (d.msg||'İstek gönderilemedi'));
-}
-socket.on('join-response', ({accepted})=>{
-  if(accepted) showNotif('green','Tebrikler. Şirket\'e katılma istediğiniz onaylandı!.');
-  else showNotif('red','Üzgünüz. Şirket\'e katılma istediğiniz reddedildi.');
+  if (!r.ok) return showNotif('red', d.error || 'Hata');
   loadCompanies();
-});
-socket.on('join-request', ({companyId})=>{
-  refreshDots(companyId);
-});
-socket.on('chat-error', d=> showNotif('red', d.msg));
-socket.on('chat-message', m=>{
-  if(!CURRENT_COMPANY) return;
-  const box = document.getElementById('chatMsgs');
-  const el = document.createElement('div');
-  el.className = 'msg';
-  el.innerHTML = `<b>${m.name}:</b>${escapeHtml(m.text)}`;
-  box.appendChild(el);
-  box.scrollTop = box.scrollHeight;
-});
+}
 
-// ===== DOTS MENU ======
-async function toggleDots(e, id){
+async function joinCompany(id) {
+  const r = await fetch('/api/company/join', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ companyId: id })
+  });
+  const d = await r.json();
+  showNotif(r.ok ? 'green' : 'red', r.ok ? 'İstek gönderildi. Onay bekleniyor.' : (d.error || 'Hata'));
+}
+
+async function toggleDots(e, id) {
   e.stopPropagation();
   const menu = document.getElementById('dots-'+id);
-  if(menu.classList.contains('show')){ menu.classList.remove('show'); return; }
-  // istekleri çek
+  if (menu.classList.contains('show')) { menu.classList.remove('show'); return; }
+
   const r = await fetch('/api/companies');
   const list = await r.json();
-  const c = list.find(x=>x.id===id);
-  if(!c){ return; }
-  menu.innerHTML = '<div style="font-size:11px;color:var(--sub);padding:6px 10px">Katılma İstekleri</div>';
-  if(!c.joinRequests || !c.joinRequests.length){
-    menu.innerHTML += '<div style="font-size:12px;color:var(--sub);padding:6px 10px">İstek yok</div>';
+  const c = list.find(x => x.id === id);
+  if (!c) return;
+
+  menu.innerHTML = '<div class="label">Katılma İstekleri</div>';
+  if (!c.joinRequests || !c.joinRequests.length) {
+    menu.innerHTML += '<div class="empty-row">İstek yok</div>';
   } else {
-    c.joinRequests.forEach(uid=>{
+    c.joinRequests.forEach(uid => {
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;gap:4px;padding:4px';
+      row.className = 'row';
       row.innerHTML = `
-        <button class="accept" style="flex:1" onclick="respondJoin('${id}','${uid}',true)">Kabul</button>
-        <button class="reject" style="flex:1" onclick="respondJoin('${id}','${uid}',false)">Reddet</button>
+        <button class="accept" onclick="respondJoin('${id}','${uid}',true)">Kabul</button>
+        <button class="reject" onclick="respondJoin('${id}','${uid}',false)">Reddet</button>
       `;
       menu.appendChild(row);
     });
   }
   menu.classList.add('show');
-  document.addEventListener('click', ()=>menu.classList.remove('show'), {once:true});
+  document.addEventListener('click', () => menu.classList.remove('show'), { once:true });
 }
 
-async function respondJoin(companyId, userId, accept){
-  await fetch('/api/company/join/respond',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ownerId:ME.id,companyId,userId,accept})});
-  showNotif(accept?'green':'red', accept?'İstek onaylandı.':'İstek reddedildi.');
+async function respondJoin(companyId, userId, accept) {
+  await fetch('/api/company/join/respond', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ companyId, userId, accept })
+  });
+  showNotif(accept ? 'green' : 'red', accept ? 'İstek onaylandı.' : 'İstek reddedildi.');
   loadCompanies();
 }
-function refreshDots(){ loadCompanies(); }
 
-// ===== COMPANY VIEW ======
-async function openCompany(id){
+async function openCompany(id) {
   const r = await fetch('/api/companies');
   const list = await r.json();
-  const c = list.find(x=>x.id===id);
-  if(!c) return;
+  const c = list.find(x => x.id === id);
+  if (!c) return;
   CURRENT_COMPANY = c;
-  document.getElementById('home').classList.add('hidden');
+  document.getElementById('homeView').classList.add('hidden');
   document.getElementById('companyView').classList.remove('hidden');
   document.getElementById('companyTop').classList.add('show');
   document.getElementById('ctName').textContent = c.name;
+
+  const totalShares = Object.values(c.shares).reduce((a,b)=>a+b,0);
   document.getElementById('companyDetail').innerHTML = `
-    <h2 style="margin-bottom:10px">${c.name}</h2>
-    <p style="color:var(--sub);font-size:13px;margin-bottom:16px">Sahip: ${c.owner===ME.id?'Sen':c.owner} · Üye: ${c.members.length}</p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <div style="flex:1;min-width:150px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px">
-        <div style="font-size:11px;color:var(--sub)">HİSSELER</div>
-        <div style="font-size:20px;font-weight:700;margin-top:4px">${Object.values(c.shares).reduce((a,b)=>a+b,0)}</div>
-      </div>
-      <div style="flex:1;min-width:150px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px">
-        <div style="font-size:11px;color:var(--sub)">SENETLER</div>
-        <div style="font-size:20px;font-weight:700;margin-top:4px">${c.members.length}</div>
-      </div>
-      <div style="flex:1;min-width:150px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px">
-        <div style="font-size:11px;color:var(--sub)">TAPULAR</div>
-        <div style="font-size:20px;font-weight:700;margin-top:4px">0</div>
-      </div>
+    <div class="page-title">${esc(c.name)}</div>
+    <div class="page-sub">${c.members.length} üye</div>
+    <div class="stats">
+      <div class="stat"><div class="k">Hisse</div><div class="v">${totalShares}</div></div>
+      <div class="stat"><div class="k">Senet</div><div class="v">${c.members.length}</div></div>
+      <div class="stat"><div class="k">Tapu</div><div class="v">0</div></div>
     </div>
   `;
-  // chat yükle
+
   const box = document.getElementById('chatMsgs');
   box.innerHTML = '';
-  (c.chat||[]).forEach(m=>{
+  (c.chat || []).forEach(m => {
     const el = document.createElement('div');
-    el.className = 'msg';
-    el.innerHTML = `<b>${m.name}:</b>${escapeHtml(m.text)}`;
+    el.className = 'msg-line';
+    el.innerHTML = `<b>${esc(m.name)}:</b>${esc(m.text)}`;
     box.appendChild(el);
   });
   box.scrollTop = box.scrollHeight;
   socket.emit('join-company-room', id);
 }
 
-function backHome(){
+function backHome() {
   CURRENT_COMPANY = null;
   document.getElementById('companyView').classList.add('hidden');
-  document.getElementById('home').classList.remove('hidden');
+  document.getElementById('homeView').classList.remove('hidden');
   document.getElementById('companyTop').classList.remove('show');
   loadCompanies();
 }
 
-function sendChat(){
-  if(!CURRENT_COMPANY) return;
+function sendChat() {
+  if (!CURRENT_COMPANY) return;
   const input = document.getElementById('chatInput');
   const text = input.value.trim();
-  if(!text) return;
-  socket.emit('chat-message',{companyId:CURRENT_COMPANY.id,userId:ME.id,name:ME.name,text});
+  if (!text) return;
+  socket.emit('chat-message', { companyId: CURRENT_COMPANY.id, text });
   input.value = '';
 }
 
-// ===== UTIL ======
-function showNotif(type, text){
+// ===== ATTACK =====
+let attackCompany = null;
+function openAttack(id) {
+  attackCompany = id;
+  document.getElementById('attackOverlay').classList.add('show');
+  document.getElementById('attackMenu').style.display = 'block';
+  document.getElementById('attackResult').className = 'attack-result';
+  document.getElementById('attackMatrix').innerHTML = '';
+}
+
+function runAttack() {
+  document.getElementById('attackMenu').style.display = 'none';
+  const m = document.getElementById('attackMatrix');
+  m.innerHTML = '';
+  const words = ['PASS','FAIL','TRY','EXEC','HACK','ROOT','ADMIN','SHARE','TAPU','SIZ','SCAN','PORT','TOKEN','AUTH','CRACK'];
+  for (let i = 0; i < 300; i++) {
+    const s = document.createElement('span');
+    s.textContent = Math.random().toString(2).slice(2,12) + ' ' + words[Math.floor(Math.random()*words.length)];
+    s.style.left = Math.random()*100 + '%';
+    s.style.animationDuration = (Math.random()*2+1) + 's';
+    s.style.animationDelay = (Math.random()*1.5) + 's';
+    s.style.color = Math.random()>.85 ? '#ef4444' : (Math.random()>.5?'#22c55e':'#16a34a');
+    m.appendChild(s);
+  }
+  let dits = 0;
+  const dit = setInterval(() => { beep(); if (++dits > 12) clearInterval(dit); }, 220);
+
+  setTimeout(async () => {
+    clearInterval(dit);
+    const r = await fetch('/api/attack', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ companyId: attackCompany })
+    });
+    const d = await r.json();
+    const res = document.getElementById('attackResult');
+    const title = document.getElementById('arTitle');
+    const msg = document.getElementById('arMsg');
+    if (d.success) {
+      res.className = 'attack-result show green';
+      title.textContent = 'Pass Found!';
+      msg.textContent = 'The attack was successful.';
+    } else {
+      res.className = 'attack-result show red';
+      title.textContent = 'Pass not found';
+      msg.textContent = 'The attack failed.';
+    }
+    loadCompanies();
+  }, 1600);
+}
+
+function closeAttack() {
+  document.getElementById('attackOverlay').classList.remove('show');
+  loadCompanies();
+}
+
+let ac;
+function beep() {
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.connect(g); g.connect(ac.destination);
+    o.frequency.value = 880; o.type = 'square';
+    g.gain.setValueAtTime(.05, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001, ac.currentTime + .08);
+    o.start(); o.stop(ac.currentTime + .09);
+  } catch(e) {}
+}
+
+// ===== UTIL =====
+function showNotif(type, text) {
   const n = document.getElementById('topNotif');
   n.className = 'top-notif ' + type + ' show';
   n.textContent = text;
-  setTimeout(()=>n.classList.remove('show'), 4000);
+  setTimeout(() => n.classList.remove('show'), 4000);
 }
-function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+boot();
 </script>
 </body>
 </html>
