@@ -25,7 +25,7 @@
   }
   input,button{font-family:inherit}
 
-  /* AUTH SCREEN */
+  /* AUTH */
   #authScreen{
     position:fixed; inset:0; z-index:200; background:var(--bg);
     display:none; align-items:center; justify-content:center; padding:24px;
@@ -82,7 +82,7 @@
   .msg.error{background:rgba(239,68,68,.1); color:#fca5a5; border:1px solid rgba(239,68,68,.25)}
   .msg.info{background:rgba(59,130,246,.1); color:#93c5fd; border:1px solid rgba(59,130,246,.25)}
 
-  /* BOT SCREEN */
+  /* BOT / SLIDER CAPTCHA */
   #botScreen{
     position:fixed; inset:0; z-index:210; background:var(--bg);
     display:flex; align-items:center; justify-content:center; padding:24px;
@@ -90,7 +90,7 @@
       radial-gradient(circle at 50% 0%, rgba(59,130,246,.1), transparent 50%);
   }
   .bot-box{
-    width:100%; max-width:420px; background:var(--surface);
+    width:100%; max-width:440px; background:var(--surface);
     border:1px solid var(--border); border-radius:16px;
     padding:36px 32px; text-align:center;
     box-shadow:0 24px 64px rgba(0,0,0,.5);
@@ -103,22 +103,53 @@
   }
   .bot-box h2{font-size:18px; font-weight:700; margin-bottom:6px; letter-spacing:-.02em}
   .bot-box p.desc{font-size:13px; color:var(--txt-dim); margin-bottom:22px; line-height:1.55}
-  .math-box{
-    background:var(--surface-2); border:1px solid var(--border);
-    border-radius:10px; padding:18px; margin-bottom:16px;
-    font-size:24px; font-weight:700; letter-spacing:.05em;
-  }
-  .math-box b{color:var(--accent)}
-  .math-box input{
-    width:80px; padding:8px 12px; margin-left:8px;
-    background:var(--surface-3); border:1px solid var(--border);
-    border-radius:8px; color:var(--txt); font-size:20px;
-    font-weight:700; text-align:center; outline:none;
-    font-family:inherit;
-  }
-  .math-box input:focus{border-color:var(--accent)}
 
-  /* VERIFY CODE SCREEN */
+  /* SLIDER */
+  .slider-track{
+    position:relative; height:56px;
+    background:var(--surface-2); border:1px solid var(--border);
+    border-radius:10px; margin-bottom:16px;
+    overflow:hidden; user-select:none;
+    touch-action:none;
+  }
+  .slider-fill{
+    position:absolute; top:0; left:0; bottom:0; width:0;
+    background:linear-gradient(90deg, rgba(59,130,246,.25), rgba(59,130,246,.4));
+    pointer-events:none;
+  }
+  .slider-target{
+    position:absolute; top:0; bottom:0; width:52px;
+    background:rgba(34,197,94,.15);
+    border-left:2px solid rgba(34,197,94,.5);
+    border-right:2px solid rgba(34,197,94,.5);
+    pointer-events:none;
+  }
+  .slider-target::after{
+    content:''; position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    width:0; height:0;
+    border-left:6px solid transparent;
+    border-right:6px solid transparent;
+    border-bottom:8px solid rgba(34,197,94,.7);
+  }
+  .slider-handle{
+    position:absolute; top:4px; left:4px; bottom:4px; width:48px;
+    background:linear-gradient(180deg, #3b82f6, #2563eb);
+    border-radius:8px; cursor:grab;
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-size:16px; font-weight:700;
+    box-shadow:0 4px 12px rgba(59,130,246,.4);
+    transition:box-shadow .15s;
+  }
+  .slider-handle:active{cursor:grabbing; box-shadow:0 6px 20px rgba(59,130,246,.6)}
+  .slider-hint{
+    position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    font-size:12px; color:var(--txt-muted); pointer-events:none;
+    white-space:nowrap;
+  }
+
+  /* CODE SCREEN */
   #verifyScreen{
     position:fixed; inset:0; z-index:190; background:var(--bg);
     display:none; align-items:center; justify-content:center; padding:24px;
@@ -174,8 +205,7 @@
   #app.active{display:block}
   .header{
     position:sticky; top:0; z-index:30;
-    background:rgba(17,19,24,.85);
-    backdrop-filter:blur(14px);
+    background:rgba(17,19,24,.85); backdrop-filter:blur(14px);
     border-bottom:1px solid var(--border);
     padding:14px 24px; display:flex; align-items:center; justify-content:space-between;
   }
@@ -351,7 +381,7 @@
 </head>
 <body>
 
-<!-- 1) BOT SCREEN (ilk ekran) -->
+<!-- 1) SLIDER CAPTCHA -->
 <div id="botScreen">
   <div class="bot-box">
     <div class="shield">
@@ -360,17 +390,21 @@
       </svg>
     </div>
     <h2>Güvenlik Doğrulaması</h2>
-    <p class="desc">Devam etmek için aşağıdaki işlemi çöz. Botlar ve otomatik saldırılar engellenir.</p>
-    <div class="math-box" id="mathBox">
-      <span id="mathQ">… + …</span> =
-      <input id="mathA" inputmode="numeric" autocomplete="off" onkeydown="if(event.key==='Enter')solveBot()">
+    <p class="desc">Aşağıdaki sürgüyü <b style="color:var(--green)">yeşil alana</b> denk getir. Botlar ve botnetler bu adımı geçemez.</p>
+
+    <div class="slider-track" id="sliderTrack">
+      <div class="slider-fill" id="sliderFill"></div>
+      <div class="slider-target" id="sliderTarget"></div>
+      <div class="slider-hint" id="sliderHint">Sürükle →</div>
+      <div class="slider-handle" id="sliderHandle">››</div>
     </div>
-    <button class="primary" onclick="solveBot()">Doğrula ve Devam Et</button>
+
+    <button class="primary" onclick="solveBot()" id="botSubmitBtn">Doğrula ve Devam Et</button>
     <div id="botMsg" class="msg"></div>
   </div>
 </div>
 
-<!-- 2) AUTH SCREEN -->
+<!-- 2) AUTH -->
 <div id="authScreen">
   <div class="auth-box">
     <div class="brand-top">
@@ -395,13 +429,13 @@
       <div class="field"><label>Ad Soyad</label><input id="regName" type="text" placeholder="Adın"></div>
       <div class="field"><label>E-posta</label><input id="regEmail" type="email" placeholder="ornek@mail.com"></div>
       <div class="field"><label>Şifre</label><input id="regPass" type="password" placeholder="En az 6 karakter"></div>
-      <button class="primary" onclick="doRegisterSendCode()">Kod Gönder</button>
+      <button class="primary" onclick="doRegisterSendCode()" id="regBtn">Kod Gönder</button>
       <div id="regMsg" class="msg"></div>
     </div>
   </div>
 </div>
 
-<!-- 3) CODE VERIFY SCREEN -->
+<!-- 3) CODE VERIFY -->
 <div id="verifyScreen">
   <div class="verify-box">
     <div class="shield">
@@ -484,28 +518,80 @@ let ME = null;
 let CURRENT_COMPANY = null;
 let socket = null;
 let BOT_CID = null;
+let SLIDER_POS = 0;
+let SLIDER_TARGET = 0;
 let REG_ID = null;
 
-// ===== 1) BOT CHALLENGE =====
+// ===== SLIDER CAPTCHA =====
+const track = document.getElementById('sliderTrack');
+const handle = document.getElementById('sliderHandle');
+const fill = document.getElementById('sliderFill');
+const target = document.getElementById('sliderTarget');
+const hint = document.getElementById('sliderHint');
+
+let dragging = false;
+
+function layoutSlider(targetVal) {
+  const tRect = track.getBoundingClientRect();
+  const maxLeft = tRect.width - 56;
+  // hedef pozisyonu
+  const targetLeft = (targetVal / 100) * maxLeft;
+  target.style.left = targetLeft + 'px';
+  target.style.width = '52px';
+  SLIDER_TARGET = targetVal;
+}
+
 async function loadBotChallenge() {
   const r = await fetch('/api/bot/challenge', { method:'POST' });
   const d = await r.json();
   BOT_CID = d.cid;
-  document.getElementById('mathQ').textContent = `${d.a} + ${d.b}`;
-  document.getElementById('mathA').value = '';
-  document.getElementById('mathA').focus();
+  SLIDER_POS = 0;
+  handle.style.left = '4px';
+  fill.style.width = '0px';
+  hint.style.opacity = '1';
+  requestAnimationFrame(() => layoutSlider(d.target));
 }
 
+function startDrag(e) {
+  e.preventDefault();
+  dragging = true;
+  hint.style.opacity = '0';
+}
+function moveDrag(e) {
+  if (!dragging) return;
+  const tRect = track.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  let x = clientX - tRect.left - 24;
+  const maxLeft = tRect.width - 56;
+  x = Math.max(4, Math.min(maxLeft, x));
+  handle.style.left = x + 'px';
+  fill.style.width = (x + 48) + 'px';
+  SLIDER_POS = Math.round((x - 4) / maxLeft * 100);
+}
+function endDrag(e) {
+  dragging = false;
+}
+
+handle.addEventListener('mousedown', startDrag);
+handle.addEventListener('touchstart', startDrag, { passive:false });
+document.addEventListener('mousemove', moveDrag);
+document.addEventListener('touchmove', moveDrag, { passive:false });
+document.addEventListener('mouseup', endDrag);
+document.addEventListener('touchend', endDrag);
+
 async function solveBot() {
-  const answer = document.getElementById('mathA').value.trim();
-  if (!answer) return showMsg('botMsg', 'error', 'Cevap gir');
+  const btn = document.getElementById('botSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Doğrulanıyor…';
   const r = await fetch('/api/bot/solve', {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ cid: BOT_CID, answer })
+    body: JSON.stringify({ cid: BOT_CID, value: SLIDER_POS })
   });
   const d = await r.json();
+  btn.disabled = false;
+  btn.textContent = 'Doğrula ve Devam Et';
   if (!r.ok) {
-    showMsg('botMsg', 'error', d.error || 'Yanlış cevap');
+    showMsg('botMsg', 'error', d.error || 'Yanlış hizalama');
     loadBotChallenge();
     return;
   }
@@ -513,14 +599,13 @@ async function solveBot() {
   document.getElementById('authScreen').classList.add('active');
 }
 
-// ===== 2) AUTH =====
+// ===== AUTH =====
 function switchTab(t) {
   document.getElementById('tabLogin').classList.toggle('active', t==='login');
   document.getElementById('tabRegister').classList.toggle('active', t==='register');
   document.getElementById('paneLogin').classList.toggle('hidden', t!=='login');
   document.getElementById('paneRegister').classList.toggle('hidden', t!=='register');
 }
-
 function showMsg(id, type, text) {
   const el = document.getElementById(id);
   el.className = 'msg show ' + type;
@@ -546,19 +631,34 @@ async function doRegisterSendCode() {
   const email = document.getElementById('regEmail').value.trim();
   const password = document.getElementById('regPass').value;
   if (!name || !email || !password) return showMsg('regMsg', 'error', 'Tüm alanları doldur');
-  const btn = document.querySelector('#paneRegister .primary');
+
+  const btn = document.getElementById('regBtn');
   btn.disabled = true;
   btn.textContent = 'Gönderiliyor…';
-  const r = await fetch('/api/register/send-code', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ name, email, password })
-  });
-  const d = await r.json();
-  btn.disabled = false;
-  btn.textContent = 'Kod Gönder';
-  if (!r.ok) return showMsg('regMsg', 'error', d.error || 'Kod gönderilemedi');
-  REG_ID = d.regId;
-  showCodeScreen(email);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const r = await fetch('/api/register/send-code', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, email, password }),
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const d = await r.json();
+    btn.disabled = false;
+    btn.textContent = 'Kod Gönder';
+    if (!r.ok) return showMsg('regMsg', 'error', d.error || 'Kod gönderilemedi');
+    REG_ID = d.regId;
+    showCodeScreen(email);
+  } catch (e) {
+    clearTimeout(timer);
+    btn.disabled = false;
+    btn.textContent = 'Kod Gönder';
+    if (e.name === 'AbortError') showMsg('regMsg', 'error', 'Sunucu 30sn yanıt vermedi. Mail ayarlarını kontrol et.');
+    else showMsg('regMsg', 'error', 'Bağlantı hatası');
+  }
 }
 
 function showCodeScreen(email) {
@@ -638,13 +738,12 @@ async function doLogout() {
   location.reload();
 }
 
-// ===== 3) APP =====
+// ===== APP =====
 async function boot() {
   await loadBotChallenge();
   const r = await fetch('/api/me');
   if (!r.ok) return;
   ME = await r.json();
-  // Kullanıcı zaten girişli → bot ekranı gösterme
   document.getElementById('botScreen').style.display = 'none';
   await enterApp();
 }
