@@ -2,6 +2,10 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcryptjs');
+const cookieParser = require('cookie-parser');
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -9,144 +13,238 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 app.use(express.json());
+app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Anti-DDoS / Under Attack limiter
+// ====== MAIL ======
+const MAIL_USER = process.env.MAIL_USER || 'vantoriumdeveloper@gmail.com';
+const MAIL_PASS = process.env.MAIL_PASS || 'tiuc ofld nhsz irbu';
+
+const mailer = nodemailer.createTransport({
+  service: 'gmail',
+  auth: { user: MAIL_USER, pass: MAIL_PASS }
+});
+
+async function sendVerifyMail(to, code) {
+  return mailer.sendMail({
+    from: `"Vantorium" <${MAIL_USER}>`,
+    to,
+    subject: 'Vantorium — Doğrulama Kodun',
+    html: `
+      <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:auto;padding:32px;background:#111318;color:#e9edf3;border-radius:12px">
+        <h2 style="margin:0 0 12px;font-size:20px">Doğrulama Kodun</h2>
+        <p style="color:#9aa3b2;font-size:14px;margin:0 0 20px">Hesabını doğrulamak için aşağıdaki kodu kullan. Kod 5 dakika geçerli.</p>
+        <div style="font-size:32px;font-weight:700;letter-spacing:8px;padding:18px;background:#171a21;border:1px dashed #2e3542;border-radius:10px;text-align:center;color:#3b82f6">${code}</div>
+        <p style="color:#5f6878;font-size:12px;margin-top:20px">Bu kodu kimseyle paylaşma.</p>
+      </div>
+    `
+  });
+}
+
+// ====== RATE LIMIT ======
 const globalLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 120,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    res.status(429).json({ underAttack: true, msg: 'UNDER ATTACK - Rate limit aşıldı' });
-  }
+  windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({ underAttack: true, msg: 'UNDER ATTACK — çok fazla istek' })
+});
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 8,
+  handler: (req, res) => res.status(429).json({ error: 'Çok fazla deneme. 1 dakika bekle.' })
 });
 app.use(globalLimiter);
 
-// ====== IN-MEMORY DB ======
-const users = {};     // id -> {name, verified, shares, deeded, tapu}
-const companies = {}; // id -> {name, owner, members:[], shares:[], chat:[], joinRequests:[]}
+// ====== DB ======
+const users = {};
+const sessions = {};
+const pendingVerify = {};
+const companies = {};
 let uid = 1;
 
-function newUser(name) {
-  const id = 'u' + (uid++);
-  users[id] = { id, name: name || ('Kullanıcı' + uid), verified: false, shares: {}, taps: [] };
-  return users[id];
+const newToken = () => crypto.randomBytes(32).toString('hex');
+const newCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+function auth(req, res, next) {
+  const token = req.cookies?.vtoken;
+  if (!token || !sessions[token]) return res.status(401).json({ error: 'Giriş yapmalısın' });
+  req.userId = sessions[token];
+  req.user = users[req.userId];
+  if (!req.user) return res.status(401).json({ error: 'Oturum geçersiz' });
+  next();
 }
 
-// ====== API ======
-app.post('/api/verify', (req, res) => {
+function verifyGuard(req, res, next) {
+  if (!req.user.verified) return res.status(403).json({ error: 'Doğrulama tamamlanmadı' });
+  next();
+}
+
+// ====== AUTH ======
+app.post('/api/register', authLimiter, async (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'Eksik alan' });
+  if (password.length < 6) return res.status(400).json({ error: 'Şifre en az 6 karakter' });
+  if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Geçersiz e-posta' });
+  if (Object.values(users).some(u => u.email === email.toLowerCase()))
+    return res.status(400).json({ error: 'Bu e-posta zaten kayıtlı' });
+
+  const id = 'u' + (uid++);
+  const passHash = await bcrypt.hash(password, 10);
+  users[id] = { id, name, email: email.toLowerCase(), passHash, verified: false, createdAt: Date.now() };
+
+  const code = newCode();
+  pendingVerify[id] = { code, expires: Date.now() + 5 * 60 * 1000 };
+
+  try {
+    await sendVerifyMail(email, code);
+  } catch (e) {
+    console.error('Mail hatası:', e.message);
+    delete users[id];
+    return res.status(500).json({ error: 'Doğrulama e-postası gönderilemedi. Sonra tekrar dene.' });
+  }
+
+  const token = newToken();
+  sessions[token] = id;
+  res.cookie('vtoken', token, { httpOnly: true, sameSite: 'lax', maxAge: 7 * 24 * 3600 * 1000 });
+  res.json({ ok: true, user: { id, name, verified: false } });
+});
+
+app.post('/api/login', authLimiter, async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Eksik alan' });
+  const user = Object.values(users).find(u => u.email === email.toLowerCase());
+  if (!user) return res.status(400).json({ error: 'E-posta veya şifre hatalı' });
+  const ok = await bcrypt.compare(password, user.passHash);
+  if (!ok) return res.status(400).json({ error: 'E-posta veya şifre hatalı' });
+
+  const token = newToken();
+  sessions[token] = user.id;
+  res.cookie('vtoken', token, { httpOnly: true, sameSite: 'lax', maxAge: 7 * 24 * 3600 * 1000 });
+  res.json({ ok: true, user: { id: user.id, name: user.name, verified: user.verified } });
+});
+
+app.post('/api/logout', (req, res) => {
+  const t = req.cookies?.vtoken;
+  if (t) delete sessions[t];
+  res.clearCookie('vtoken');
+  res.json({ ok: true });
+});
+
+app.get('/api/me', auth, (req, res) => {
+  res.json({ id: req.user.id, name: req.user.name, email: req.user.email, verified: req.user.verified });
+});
+
+// ====== VERIFY ======
+app.post('/api/verify/send', auth, async (req, res) => {
+  const id = req.userId;
+  const code = newCode();
+  pendingVerify[id] = { code, expires: Date.now() + 5 * 60 * 1000 };
+  try {
+    await sendVerifyMail(req.user.email, code);
+  } catch (e) {
+    console.error('Mail hatası:', e.message);
+    return res.status(500).json({ error: 'Kod gönderilemedi' });
+  }
+  res.json({ ok: true });
+});
+
+app.post('/api/verify/confirm', auth, (req, res) => {
+  const { code } = req.body;
+  const p = pendingVerify[req.userId];
+  if (!p) return res.status(400).json({ error: 'Kod istenmedi' });
+  if (Date.now() > p.expires) return res.status(400).json({ error: 'Kod süresi doldu' });
+  if (p.code !== String(code)) return res.status(400).json({ error: 'Kod yanlış' });
+  req.user.verified = true;
+  delete pendingVerify[req.userId];
+  res.json({ ok: true });
+});
+
+// ====== COMPANIES ======
+app.get('/api/companies', auth, verifyGuard, (req, res) => {
+  res.json(Object.values(companies).map(c => ({
+    id: c.id, name: c.name, owner: c.owner, members: c.members,
+    shares: c.shares, chat: c.chat.slice(-50),
+    joinRequests: c.owner === req.userId ? c.joinRequests : []
+  })));
+});
+
+app.post('/api/company/create', auth, verifyGuard, (req, res) => {
   const { name } = req.body;
-  const u = newUser(name);
-  u.verified = true;
-  res.json({ ok: true, user: u });
-});
-
-app.get('/api/companies', (req, res) => {
-  res.json(Object.values(companies));
-});
-
-app.post('/api/company/create', (req, res) => {
-  const { userId, name } = req.body;
-  if (!users[userId]) return res.status(400).json({ error: 'no user' });
+  if (!name) return res.status(400).json({ error: 'Ad gerekli' });
   const id = 'c' + Date.now();
   companies[id] = {
-    id, name: name || 'Yeni Şirket',
-    owner: userId, members: [userId],
-    shares: { [userId]: 100 },
-    chat: [], joinRequests: []
+    id, name, owner: req.userId, members: [req.userId],
+    shares: { [req.userId]: 100 }, chat: [], joinRequests: []
   };
   res.json({ ok: true, company: companies[id] });
 });
 
-// Saldırı (5% başarı)
-app.post('/api/attack', (req, res) => {
-  const { userId, companyId } = req.body;
+app.post('/api/attack', auth, verifyGuard, (req, res) => {
+  const { companyId } = req.body;
   const c = companies[companyId];
-  if (!c) return res.status(404).json({ error: 'yok' });
-  if (c.owner === userId) return res.status(400).json({ error: 'sahipsin' });
+  if (!c) return res.status(404).json({ error: 'Şirket yok' });
+  if (c.owner === req.userId) return res.status(400).json({ error: 'Kendi şirketin' });
+  if (c.members.includes(req.userId)) return res.status(400).json({ error: 'Zaten üyesin' });
 
   const success = Math.random() < 0.05;
   if (success) {
-    // Hisseleri ele geçir
-    const ownerShares = c.shares[c.owner] || 0;
-    c.shares[userId] = (c.shares[userId] || 0) + ownerShares;
+    const s = c.shares[c.owner] || 0;
+    c.shares[req.userId] = (c.shares[req.userId] || 0) + s;
     c.shares[c.owner] = 0;
-    c.owner = userId;
-    if (!c.members.includes(userId)) c.members.push(userId);
-    res.json({ success: true, msg: 'Pass Found!' });
-  } else {
-    res.json({ success: false, msg: 'Pass not found' });
-  }
+    c.owner = req.userId;
+    if (!c.members.includes(req.userId)) c.members.push(req.userId);
+    res.json({ success: true });
+  } else res.json({ success: false });
 });
 
-// Katılma isteği
-app.post('/api/company/join', (req, res) => {
-  const { userId, companyId } = req.body;
+app.post('/api/company/join', auth, verifyGuard, (req, res) => {
+  const { companyId } = req.body;
   const c = companies[companyId];
   if (!c) return res.status(404).json({ error: 'yok' });
-  if (c.members.includes(userId)) return res.json({ ok: false, msg: 'Zaten üyesin' });
-  if (!c.joinRequests.includes(userId)) c.joinRequests.push(userId);
-  io.to(c.owner).emit('join-request', { companyId, userId, name: users[userId]?.name });
+  if (c.members.includes(req.userId)) return res.status(400).json({ error: 'Zaten üyesin' });
+  if (!c.joinRequests.includes(req.userId)) c.joinRequests.push(req.userId);
+  io.to(c.owner).emit('join-request', { companyId, name: req.user.name });
   res.json({ ok: true });
 });
 
-app.post('/api/company/join/respond', (req, res) => {
-  const { ownerId, companyId, userId, accept } = req.body;
+app.post('/api/company/join/respond', auth, verifyGuard, (req, res) => {
+  const { companyId, userId, accept } = req.body;
   const c = companies[companyId];
-  if (!c || c.owner !== ownerId) return res.status(403).json({ error: 'yetki' });
+  if (!c || c.owner !== req.userId) return res.status(403).json({ error: 'yetki yok' });
   c.joinRequests = c.joinRequests.filter(x => x !== userId);
-  if (accept) {
-    c.members.push(userId);
-    c.shares[userId] = 0;
-    io.to(userId).emit('join-response', { companyId, accepted: true });
-  } else {
-    io.to(userId).emit('join-response', { companyId, accepted: false });
-  }
+  if (accept) { c.members.push(userId); c.shares[userId] = 0; }
+  io.to(userId).emit('join-response', { companyId, accepted: !!accept });
   res.json({ ok: true });
 });
 
-// Soğuk hisse / tapu transferi (örnek)
-app.post('/api/transfer', (req, res) => {
-  const { from, to, companyId, amount } = req.body;
-  const c = companies[companyId];
-  if (!c) return res.status(404).json({ error: 'yok' });
-  if ((c.shares[from] || 0) < amount) return res.status(400).json({ error: 'yetersiz' });
-  c.shares[from] -= amount;
-  c.shares[to] = (c.shares[to] || 0) + amount;
-  res.json({ ok: true });
-});
-
-// ====== SOCKET.IO (Sohbet + Bildirim) ======
+// ====== SOCKET ======
 const chatFlood = {};
 io.on('connection', (socket) => {
-  socket.on('join-user', (uid) => { socket.join(uid); });
+  const token = socket.handshake.auth?.token;
+  if (!token || !sessions[token]) return socket.disconnect();
+  const userId = sessions[token];
+  const user = users[userId];
+  if (!user || !user.verified) return socket.disconnect();
+  socket.join(userId);
 
-  socket.on('join-company-room', (companyId) => {
-    socket.join('c:' + companyId);
+  socket.on('join-company-room', (cid) => {
+    const c = companies[cid];
+    if (c && c.members.includes(userId)) socket.join('c:' + cid);
   });
 
-  socket.on('chat-message', ({ companyId, userId, name, text }) => {
+  socket.on('chat-message', ({ companyId, text }) => {
     const c = companies[companyId];
     if (!c || !c.members.includes(userId)) return;
+    if (typeof text !== 'string') return;
+    text = text.trim().slice(0, 300);
+    if (!text) return;
 
-    // Anti flood
-    const now = Date.now();
-    const key = userId + ':' + companyId;
-    if (!chatFlood[key]) chatFlood[key] = [];
-    chatFlood[key] = chatFlood[key].filter(t => now - t < 10000);
-    if (chatFlood[key].length > 5) {
-      socket.emit('chat-error', { msg: 'Anti-Flood: çok hızlı yazıyorsun' });
-      return;
-    }
+    const now = Date.now(), key = userId + ':' + companyId;
+    chatFlood[key] = (chatFlood[key] || []).filter(t => now - t < 10000);
+    if (chatFlood[key].length > 5) return socket.emit('chat-error', { msg: 'Anti-Flood: yavaşla' });
     chatFlood[key].push(now);
 
-    // Anti spam
     const last = c.chat[c.chat.length - 1];
     if (last && last.text === text && last.userId === userId) return;
-    if (text.length > 300) text = text.slice(0, 300);
 
-    const msg = { userId, name, text, t: now };
+    const msg = { userId, name: user.name, text, t: now };
     c.chat.push(msg);
     if (c.chat.length > 200) c.chat.shift();
     io.to('c:' + companyId).emit('chat-message', msg);
@@ -154,4 +252,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log('Vantorium çalışıyor:', PORT));
+server.listen(PORT, () => console.log('Vantorium:', PORT));
