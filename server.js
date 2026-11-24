@@ -23,7 +23,10 @@ const MAIL_PASS = process.env.MAIL_PASS || 'tiuc ofld nhsz irbu';
 
 const mailer = nodemailer.createTransport({
   service: 'gmail',
-  auth: { user: MAIL_USER, pass: MAIL_PASS }
+  auth: { user: MAIL_USER, pass: MAIL_PASS },
+  connectionTimeout: 10000, // 10sn içinde bağlan
+  greetingTimeout: 10000,
+  socketTimeout: 15000
 });
 
 mailer.verify().then(
@@ -48,19 +51,16 @@ async function sendVerifyMail(to, code) {
 }
 
 // ===== RATE LIMITS =====
-// Global under-attack koruması
 app.use(rateLimit({
   windowMs: 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false,
   handler: (req, res) => res.status(429).json({ underAttack: true, error: 'UNDER ATTACK — yavaşla' })
 }));
 
-// Auth (login/kayıt)
 const authLimiter = rateLimit({
   windowMs: 60 * 1000, max: 10,
   handler: (req, res) => res.status(429).json({ error: 'Çok fazla deneme. 1 dakika bekle.' })
 });
 
-// Kod gönderme (mail spam koruması)
 const sendLimiter = rateLimit({
   windowMs: 60 * 1000, max: 3,
   keyGenerator: (req) => req.body?.email?.toLowerCase() || req.ip,
@@ -70,8 +70,7 @@ const sendLimiter = rateLimit({
 // ===== DB =====
 const users = {};
 const sessions = {};
-const pendingVerify = {};       // userId -> {code, expires, attempts}
-const pendingRegistrations = {}; // regId -> {name, email, passHash, code, expires, attempts}
+const pendingRegistrations = {};
 const companies = {};
 let uid = 1;
 
@@ -79,23 +78,30 @@ const newToken = () => crypto.randomBytes(32).toString('hex');
 const newCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 const newRegId = () => 'r' + crypto.randomBytes(8).toString('hex');
 
-// ===== ANTIBOT TOKEN (server-side) =====
-const botTokens = {}; // token -> {ip, expires}
-function issueBotToken(ip) {
-  const t = crypto.randomBytes(24).toString('hex');
-  botTokens[t] = { ip, expires: Date.now() + 10 * 60 * 1000 };
-  // eski temizle
-  for (const k in botTokens) if (botTokens[k].expires < Date.now()) delete botTokens[k];
-  return t;
-}
-function checkBotToken(t, ip) {
-  const d = botTokens[t];
-  if (!d) return false;
-  if (Date.now() > d.expires) { delete botTokens[t]; return false; }
-  if (d.ip !== ip) return false; // farklı IP kullanamaz
-  delete botTokens[t]; // tek kullanım
-  return true;
-}
+// ===== SLIDER CAPTCHA =====
+const sliderChallenges = {}; // cid -> { target, expires }
+
+app.post('/api/bot/challenge', (req, res) => {
+  const cid = crypto.randomBytes(8).toString('hex');
+  // Hedef pozisyon (0-100 arası), tam turda 100'e eşit olmalı
+  const target = 50 + Math.floor(Math.random() * 50); // 50-99
+  sliderChallenges[cid] = { target, expires: Date.now() + 2 * 60 * 1000 };
+  for (const k in sliderChallenges) if (sliderChallenges[k].expires < Date.now()) delete sliderChallenges[k];
+  res.json({ cid, target });
+});
+
+app.post('/api/bot/solve', (req, res) => {
+  const { cid, value } = req.body || {};
+  const c = sliderChallenges[cid];
+  if (!c) return res.status(400).json({ error: 'Challenge geçersiz' });
+  if (Date.now() > c.expires) { delete sliderChallenges[cid]; return res.status(400).json({ error: 'Süre doldu' }); }
+  // value 0-100 arası tam sayı olmalı, hedefin ±3 toleransında
+  const v = Math.round(Number(value));
+  if (isNaN(v) || v < 0 || v > 100) return res.status(400).json({ error: 'Geçersiz değer' });
+  if (Math.abs(v - c.target) > 3) return res.status(400).json({ error: 'Yanlış hizalama, tekrar dene' });
+  delete sliderChallenges[cid];
+  res.json({ ok: true });
+});
 
 // ===== AUTH MIDDLEWARE =====
 function auth(req, res, next) {
@@ -111,28 +117,7 @@ function verifyGuard(req, res, next) {
   next();
 }
 
-// ===== BOT VERIFY =====
-app.post('/api/bot/challenge', (req, res) => {
-  // Basit challenge: client'a sunucu bir nonce verir, client "insan" ise doğru cevabı verir
-  const a = Math.floor(Math.random() * 9) + 2;
-  const b = Math.floor(Math.random() * 9) + 2;
-  const cid = crypto.randomBytes(8).toString('hex');
-  pendingVerify[cid] = { a, b, expires: Date.now() + 2 * 60 * 1000 }; // reuse map
-  res.json({ cid, a, b });
-});
-
-app.post('/api/bot/solve', (req, res) => {
-  const { cid, answer } = req.body;
-  const p = pendingVerify[cid];
-  if (!p) return res.status(400).json({ error: 'Geçersiz challenge' });
-  delete pendingVerify[cid];
-  if (Date.now() > p.expires) return res.status(400).json({ error: 'Süre doldu' });
-  if (parseInt(answer, 10) !== p.a + p.b) return res.status(400).json({ error: 'Yanlış cevap' });
-  const token = issueBotToken(req.ip);
-  res.json({ ok: true, botToken: token });
-});
-
-// ===== REGISTER FLOW (kod doğrulama önce, hesap sonra) =====
+// ===== REGISTER =====
 app.post('/api/register/send-code', authLimiter, sendLimiter, async (req, res) => {
   const { name, email, password } = req.body || {};
   if (!name || !email || !password) return res.status(400).json({ error: 'Eksik alan' });
@@ -150,13 +135,14 @@ app.post('/api/register/send-code', authLimiter, sendLimiter, async (req, res) =
     code, expires: Date.now() + 5 * 60 * 1000, attempts: 0
   };
 
+  console.log('[REG] Kod gönderilecek:', email);
   try {
-    await sendVerifyMail(email, code);
-    console.log('[MAIL] Gönderildi:', email);
+    const info = await sendVerifyMail(email, code);
+    console.log('[MAIL] OK:', email, info.messageId);
   } catch (e) {
     console.error('[MAIL] HATA:', e.message);
     delete pendingRegistrations[regId];
-    return res.status(500).json({ error: 'Mail gönderilemedi. Railway env (MAIL_USER/MAIL_PASS) kontrol et.' });
+    return res.status(500).json({ error: 'Mail gönderilemedi. Railway env (MAIL_USER/MAIL_PASS) veya Gmail app password kontrol et.' });
   }
   res.json({ ok: true, regId });
 });
@@ -170,7 +156,6 @@ app.post('/api/register/confirm', authLimiter, async (req, res) => {
   if (p.attempts > 5) { delete pendingRegistrations[regId]; return res.status(400).json({ error: 'Çok fazla deneme. Tekrar başla.' }); }
   if (p.code !== String(code)) return res.status(400).json({ error: 'Kod yanlış' });
 
-  // Hesabı oluştur
   const id = 'u' + (uid++);
   users[id] = { id, name: p.name, email: p.email, passHash: p.passHash, verified: true, createdAt: Date.now() };
   delete pendingRegistrations[regId];
